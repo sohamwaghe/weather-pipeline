@@ -1,19 +1,31 @@
-FROM apache/airflow:2.7.1-python3.9
+# Base Image: Official Airflow 2.8.1 with Python 3.11
+# Choosing 3.11 for performance improvements and 2.8.1 for stability
+FROM apache/airflow:2.8.1-python3.11
 
-# Install system dependencies (needed for some Python packages)
+# Switch to root to install system dependencies and set up directories
+# Security: We only stay in root for setup, then switch back to airflow user
 USER root
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-    build-essential \
+
+# Install system utilities if needed (git is often needed for dbt dependencies)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
     git \
-    && apt-get autoremove -yqq --purge \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Switch back to airflow user for Python package installation
+# Create directory for dbt projects
+# We create it as root to ensure it exists, then give airflow user permissions
+RUN mkdir -p /opt/dbt && chown -R airflow: /opt/dbt
+
+# Switch back to airflow user for python package installation
+# This adheres to security best practices (least privilege)
 USER airflow
 
-# Install dbt-postgres for data transformation
-RUN pip install --no-cache-dir dbt-postgres
+# Copy requirements file first to leverage Docker cache
+# If requirements.txt doesn't change, this layer is cached
+COPY requirements.txt /requirements.txt
 
-# Will add more requirements here later (e.g., pandas, requests)
+# Install Python dependencies
+# --no-cache-dir reduces image size
+# Pinned versions in requirements.txt ensure reproducibility
+RUN pip install --no-cache-dir -r /requirements.txt
