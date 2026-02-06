@@ -13,47 +13,83 @@ This project implements a real-time weather data pipeline that:
 
 ## 🛠️ Tech Stack
 
-*To be filled as we build the project*
+- **Containerization:** Docker & Docker Compose
+- **Orchestration:** Apache Airflow (LocalExecutor)
+- **Data Warehouse:** PostgreSQL (v15 Alpine)
+- **Transformation:** dbt (Data Build Tool)
+- **Languages:** Python 3.9+, SQL
 
 ## 🏗️ Architecture
 
 *Architecture diagram coming soon*
 
-## 📁 Project Structure
-
-```
-weather-pipeline/
-├── airflow/          # Airflow DAGs and configurations
-├── dbt/              # dbt models and transformations
-├── sql/              # Database initialization scripts
-├── dashboard/        # Streamlit dashboard application
-├── docs/             # Documentation and diagrams
-└── docker-compose.yml
-```
-
-## 🚀 Setup Instructions
-
-*Detailed setup instructions will be added as we build the project*
+## 🚀 Quick Start Guide
 
 ### Prerequisites
-- Docker & Docker Compose
-- Python 3.9+
-- Git
+- **Docker Desktop** installed and running
+- **WeatherStack API Key**: Get a free key from [weatherstack.com](https://weatherstack.com/)
+- **Git** installed
+- At least 4GB RAM allocated to Docker
 
-### Installation
+### Installation & Startup
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/sohamwaghe/weather-pipeline.git
+   cd weather-pipeline
+   ```
+
+2. **Configure Environment**
+   Create a `.env` file from the example template:
+   ```bash
+   # On Windows PowerShell
+   Copy-Item .env.example .env
+   # On Mac/Linux
+   cp .env.example .env
+   ```
+   
+   **Edit the `.env` file** and add your WeatherStack API key:
+   ```env
+   WEATHERSTACK_API_KEY=your_actual_api_key_here
+   ```
+
+3. **Launch Services**
+   Build and start the Airflow and Database containers:
+   ```bash
+   docker-compose up -d --build
+   ```
+   *Note: The first run may take a few minutes to build the image and initialize the database.*
+
+4. **Access Interfaces**
+   - **Airflow UI:** [http://localhost:8080](http://localhost:8080) (Login: `airflow` / `airflow`)
+   - **Database:** `localhost:5432` (User: `airflow`, Pass: `airflow`, DB: `weather_db`)
+
+## 🔍 Verifying Setup
+
+### 1. Check Container Status
+Ensure all containers are healthy (running):
+```bash
+docker-compose ps
+```
+You should see `weather_postgres`, `weather_redis`, `weather_airflow_webserver`, and `weather_airflow_scheduler` all in `Up` (healthy) state.
+
+### 2. Run Connection Test
+We've included a script to verify the database schema and connectivity. Run it inside the Airflow container:
 
 ```bash
-# Clone the repository
-git clone https://github.com/sohamwaghe/weather-pipeline.git
-cd weather-pipeline
+docker-compose run --rm airflow-webserver python test_connection.py
+```
 
-# Copy environment template
-cp .env.example .env
-
-# Fill in your environment variables in .env
-
-# Start the services
-docker-compose up -d
+**Expected Output:**
+```
+✅ Successfully connected to PostgreSQL!
+Checking schemas...
+  ✅ Schema 'raw' exists
+  ✅ Schema 'staging' exists
+  ✅ Schema 'analytics' exists
+checking tables...
+  ✅ Table 'raw.weather_data' exists
+🎉 SYSTEM CHECK PASSED: Database is correctly initialized!
 ```
 
 ## 📊 Features
