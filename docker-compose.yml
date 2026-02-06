@@ -55,6 +55,117 @@ services:
     networks:
       - weather_network
 
+  # ============================================================================
+  # REDIS SERVICE (Message Broker)
+  # ============================================================================
+  # Redis acts as a message broker for Airflow, handling communication 
+  # between the scheduler and workers (even in LocalExecutor mode)
+  redis:
+    image: redis:7-alpine
+    container_name: weather_redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 30s
+      retries: 50
+    restart: always
+    networks:
+      - weather_network
+
+  # ============================================================================
+  # AIRFLOW WEBSERVER
+  # ============================================================================
+  # The UI interface for monitoring and triggering DAGs
+  airflow-webserver:
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+    container_name: weather_airflow_webserver
+    command: webserver
+    restart: always
+    ports:
+      - "8080:8080"
+
+    # Dependencies ensure DB and Redis are ready before Airflow starts
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+    # Environment Variables Configuration
+    environment:
+      # LocalExecutor runs tasks in the scheduler process (simplifies setup for learning/small scale)
+      # vs CeleryExecutor which distributes tasks to separate worker nodes (complex, better scaling)
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+
+      # Database connection string
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/${POSTGRES_DB}
+
+      # Disable loading example DAGs to keep UI clean
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+
+      # Location of our DAGs
+      - AIRFLOW__CORE__DAGS_FOLDER=/opt/airflow/dags
+
+      # Automatically migrate database schema on startup
+      - _AIRFLOW_DB_MIGRATE=true
+
+      # Encryption key (from .env)
+      - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW__CORE__FERNET_KEY}
+      - AIRFLOW_UID=${AIRFLOW_UID}
+
+    # Volume Mounts (Sync host files to container)
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags # DAG code
+      - ./airflow/logs:/opt/airflow/logs # Task logs
+      - ./airflow/plugins:/opt/airflow/plugins # Custom plugins
+      - ./dbt:/opt/dbt # dbt project access
+      - ./.env:/opt/airflow/.env # API keys access
+
+    networks:
+      - weather_network
+
+  # ============================================================================
+  # AIRFLOW SCHEDULER
+  # ============================================================================
+  # The heartbeat of Airflow - triggers tasks and schedules DAG runs
+  airflow-scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+    container_name: weather_airflow_scheduler
+    command: scheduler
+    restart: always
+
+    # Needs same dependencies and env vars as webserver
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/${POSTGRES_DB}
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - AIRFLOW__CORE__DAGS_FOLDER=/opt/airflow/dags
+      - _AIRFLOW_DB_MIGRATE=true
+      - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW__CORE__FERNET_KEY}
+      - AIRFLOW_UID=${AIRFLOW_UID}
+
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./dbt:/opt/dbt
+      - ./.env:/opt/airflow/.env
+
+    networks:
+      - weather_network
+
 # Named volumes for persistent data storage
 # These volumes persist even when containers are removed
 volumes:
