@@ -1,0 +1,7 @@
+# Docker Compose configuration for Weather Data Pipeline
+# This file will be populated with service definitions
+
+version: '3.8'
+
+services:
+  # Services will be added here
