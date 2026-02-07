@@ -1,0 +1,13 @@
+
+weather_pipeline:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: postgres
+      user: "{{ env_var('POSTGRES_USER') }}"
+      password: "{{ env_var('POSTGRES_PASSWORD') }}"
+      dbname: "{{ env_var('POSTGRES_DB') }}"
+      schema: staging
+      port: 5432
+      threads: 4

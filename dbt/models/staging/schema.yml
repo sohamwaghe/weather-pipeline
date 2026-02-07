@@ -1,0 +1,58 @@
+
+version: 2
+
+sources:
+  - name: raw
+    schema: raw
+    tables:
+      - name: weather_data
+        description: "Raw weather data ingested from WeatherStack API"
+        columns:
+          - name: api_response
+            description: "Full JSON response from API"
+          - name: city_name
+            description: "City name queried"
+          - name: api_call_timestamp
+            description: "Timestamp when API call was made"
+
+models:
+  - name: stg_weather
+    description: "Cleaned and typed weather data from WeatherStack API"
+    columns:
+      - name: id
+        description: "Primary key from raw table"
+        tests:
+          - unique
+          - not_null
+      
+      - name: city_name
+        description: "Name of the city"
+        tests:
+          - not_null
+
+      - name: temperature
+        description: "Current temperature in Celsius"
+        tests:
+          - not_null
+
+      - name: feels_like
+        description: "Feels like temperature in Celsius"
+
+      - name: humidity
+        description: "Humidity percentage"
+        tests:
+          - not_null
+
+      - name: pressure
+        description: "Atmospheric pressure in hPa"
+
+      - name: wind_speed
+        description: "Wind speed in km/h"
+
+      - name: weather_description
+        description: "Text description of weather (e.g., Sunny, Overcast)"
+
+      - name: api_call_timestamp
+        description: "Time of extraction"
+        tests:
+          - not_null
