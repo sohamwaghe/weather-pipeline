@@ -64,6 +64,7 @@ This project implements a real-time weather data pipeline that:
    - **Airflow UI:** [http://localhost:8080](http://localhost:8080) (Login: `airflow` / `airflow`)
    - **Database:** `localhost:5432` (User: `airflow`, Pass: `airflow`, DB: `weather_db`)
 
+
 ## 🔍 Verifying Setup
 
 ### 1. Check Container Status
@@ -71,58 +72,28 @@ Ensure all containers are healthy (running):
 ```bash
 docker-compose ps
 ```
-You should see `weather_postgres`, `weather_redis`, `weather_airflow_webserver`, and `weather_airflow_scheduler` all in `Up` (healthy) state.
 
-### 2. Run Connection Test
-We've included a script to verify the database schema and connectivity. Run it inside the Airflow container:
-
+### 2. Run Comprehensive Pipeline Test
+We've included a script to verify the entire pipeline (DB, Schemas, Data, Analytics). Run it inside the Airflow container:
 ```bash
-docker-compose run --rm airflow-webserver python test_connection.py
+docker-compose run --rm weather_airflow_webserver python test_pipeline.py
 ```
 
-**Expected Output:**
-```
-✅ Successfully connected to PostgreSQL!
-Checking schemas...
-  ✅ Schema 'raw' exists
-  ✅ Schema 'staging' exists
-  ✅ Schema 'analytics' exists
-checking tables...
-  ✅ Table 'raw.weather_data' exists
-🎉 SYSTEM CHECK PASSED: Database is correctly initialized!
-```
+## 📈 Monitoring & usage
 
-## 📊 Features
+### Airflow DAGs
+- Go to `http://localhost:8080`.
+- Enable the `weather_etl_pipeline` DAG using the toggle switch.
+- Trigger a run manually or wait for the hourly schedule.
 
-*Features will be documented as they are implemented*
+### dbt Documentation
+To view the generated lineage and model documentation:
+1. Shell into the container: `docker-compose exec weather_airflow_webserver bash`
+2. Run docs server: `cd /opt/dbt && dbt docs serve --port 8001`
+3. Access at `http://localhost:8001` (requires port mapping in docker-compose)
 
-## 📝 License
-
-This project is licensed under the MIT License.
-
-```
-MIT License
-
-Copyright (c) 2026 Soham Waghe
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
+## 🐛 Troubleshooting
+See [docs/troubleshooting.md](docs/troubleshooting.md) for solutions to common errors like DB connection failures or API limits.
 
 ## 👤 Author
 

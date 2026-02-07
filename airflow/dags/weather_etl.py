@@ -1,5 +1,6 @@
 from airflow import DAG
 from airflow.operators.python import PythonOperator
+from airflow.operators.bash import BashOperator
 from datetime import datetime, timedelta
 import requests
 import json
@@ -195,11 +196,29 @@ def extract_weather_from_api(**kwargs):
     logging.info(f"Extracted data for {len(weather_data_list)} cities.")
     return weather_data_list
 
+def task_failure_callback(context):
+    """
+    Callback function that runs when a task fails.
+    """
+    task_instance = context.get('task_instance')
+    task_id = task_instance.task_id
+    dag_id = task_instance.dag_id
+    execution_date = context.get('execution_date')
+    
+    logging.error(f"Task {task_id} failed in DAG {dag_id} for execution date {execution_date}.")
+    
+    # Email notification setup (commented out as requested)
+    # from airflow.utils.email import send_email
+    # subject = f"Airflow Task Failed: {task_id}"
+    # html_content = f"Task {task_id} in DAG {dag_id} failed."
+    # send_email(to=['alerts@example.com'], subject=subject, html_content=html_content)
+
 default_args = {
     'owner': 'airflow',
     'retries': 3,
     'retry_delay': timedelta(minutes=5),
-    'email_on_failure': False,
+    'email_on_failure': False, # Set to True if email is configured
+    'on_failure_callback': task_failure_callback # Run this callback on task failure
 }
 
 with DAG(
@@ -217,6 +236,9 @@ with DAG(
         python_callable=extract_weather_from_api,
         provide_context=True
     )
+    
+    # We handle errors per city in the extract task to allow partial success,
+    # but if the entire task fails (e.g. API key missing), the callback will trigger.
 
     load_to_postgres = PythonOperator(
         task_id='load_to_postgres',
@@ -224,4 +246,51 @@ with DAG(
         provide_context=True
     )
 
-    extract_weather_data >> load_to_postgres
+    # dbt Tasks using BashOperator
+    # We use BashOperator because dbt is a CLI (Command Line Interface) tool 
+    # and this is the standard, most flexible way to run it in Airflow.
+    # It allows us to pass arguments directly to the dbt command.
+    
+    # dbt seed: Loads CSV files (from dbt/seeds) into the database as tables.
+    # This is used for static reference data like our list of cities.
+    dbt_seed = BashOperator(
+        task_id='dbt_seed',
+        bash_command='cd /opt/dbt && dbt seed --profiles-dir /opt/dbt',
+        dag=dag
+    )
+
+    # dbt run: Executes the SQL models (staging and marts) in the correct dependency order.
+    # It materializes views and tables in the database.
+    dbt_run = BashOperator(
+        task_id='dbt_run',
+        bash_command='cd /opt/dbt && dbt run --profiles-dir /opt/dbt',
+        dag=dag
+    )
+
+    # dbt test: Runs data quality tests defined in schema.yml (e.g., unique, not_null).
+    # If any test fails, this task will fail, stopping the pipeline and preventing bad data 
+    # from downstream usage. Ideally, this should alert the data team.
+    dbt_test = BashOperator(
+        task_id='dbt_test',
+        bash_command='cd /opt/dbt && dbt test --profiles-dir /opt/dbt',
+        dag=dag
+    )
+
+    # dbt docs generate: Generates documentation website for the models.
+    # Optional task, often run at the end.
+    dbt_docs_generate = BashOperator(
+        task_id='dbt_docs_generate',
+        bash_command='cd /opt/dbt && dbt docs generate --profiles-dir /opt/dbt',
+        dag=dag
+    )
+
+
+    # Task Dependencies:
+    # 1. Extract data from API
+    # 2. Load data to Postgres raw table
+    # 3. Run dbt seed (load static data)
+    # 4. Run dbt transformation models
+    # 5. Test data quality
+    # 6. Generate documentation (optional/non-blocking)
+    
+    extract_weather_data >> load_to_postgres >> dbt_seed >> dbt_run >> dbt_test >> dbt_docs_generate
