@@ -95,6 +95,9 @@ services:
       redis:
         condition: service_healthy
 
+    env_file:
+      - .env
+
     # Environment Variables Configuration
     environment:
       # LocalExecutor runs tasks in the scheduler process (simplifies setup for learning/small scale)
@@ -147,6 +150,9 @@ services:
       redis:
         condition: service_healthy
 
+    env_file:
+      - .env
+
     environment:
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/${POSTGRES_DB}
@@ -165,6 +171,38 @@ services:
 
     networks:
       - weather_network
+
+  # ============================================================================
+  # STREAMLIT DASHBOARD
+  # ============================================================================
+  streamlit:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile.streamlit
+    container_name: weather_dashboard
+    ports:
+      - "8501:8501"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - ./dashboard:/app
+      - ./.env:/app/.env
+    working_dir: /app
+    restart: always
+    networks:
+      - weather_network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8501/_stcore/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 # Named volumes for persistent data storage
 # These volumes persist even when containers are removed

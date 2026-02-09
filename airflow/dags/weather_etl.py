@@ -2,6 +2,8 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.operators.bash import BashOperator
 from datetime import datetime, timedelta
+import data_quality_checks
+
 import requests
 import json
 import logging
@@ -13,52 +15,26 @@ from dotenv import load_dotenv
 load_dotenv()
 
 def load_weather_to_raw_table(**kwargs):
-    """
-    Loads weather data from XCom into PostgreSQL.
-    
-    This function:
-    1. Pulls the extracted weather data from the 'extract_weather_data' task using XCom.
-    2. Connects to the PostgreSQL database using credentials from environment variables.
-    3. Ensures the schema 'raw' and table 'weather_data' exist.
-    4. Inserts each weather record into the table.
-    5. Commits the transaction and closes the connection.
-    
-    Args:
-        **kwargs: Airflow context arguments.
-    """
     ti = kwargs['ti']
     weather_data_list = ti.xcom_pull(task_ids='extract_weather_data')
     
+    logging.info(f"Received {len(weather_data_list) if weather_data_list else 0} records from XCom.")
+    
     if not weather_data_list:
-        logging.info("No weather data to load.")
+        logging.warning("No weather data to load. Check 'extract_weather_data' task.")
         return
 
-    # Database connection parameters
-    db_user = os.getenv("POSTGRES_USER")
-    db_password = os.getenv("POSTGRES_PASSWORD")
-    db_host = os.getenv("POSTGRES_HOST")
-    db_port = os.getenv("POSTGRES_PORT")
-    db_name = os.getenv("POSTGRES_DB")
+    db_user = os.getenv("POSTGRES_USER", "Airflow")
+    db_password = os.getenv("POSTGRES_PASSWORD", "Airflow")
+    db_host = os.getenv("POSTGRES_HOST", "postgres")
+    db_port = os.getenv("POSTGRES_PORT", "5432")
+    db_name = os.getenv("POSTGRES_DB", "weather_db")
     
     conn = None
     try:
-        # Context manager for automatic connection handling? 
-        # psycopg2 connection can be used as context manager for transaction, 
-        # but closing connection needs to be explicit or via `with psycopg2.connect() ... as conn:`
-        
-        logging.info("Connecting to PostgreSQL...")
-        conn = psycopg2.connect(
-            user=db_user,
-            password=db_password,
-            host=db_host,
-            port=db_port,
-            database=db_name
-        )
-        
-        # Open a cursor to perform database operations
+        logging.info(f"Connecting to {db_name} at {db_host}...")
+        conn = psycopg2.connect(user=db_user, password=db_password, host=db_host, port=db_port, database=db_name)
         with conn.cursor() as cur:
-            # Create Schema and Table if they ensure idempotency of setup
-            logging.info("Ensuring schema and table exist...")
             cur.execute("CREATE SCHEMA IF NOT EXISTS raw;")
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS raw.weather_data (
@@ -70,227 +46,124 @@ def load_weather_to_raw_table(**kwargs):
                     UNIQUE(city_name, api_call_timestamp) 
                 );
             """)
-            # Checks for duplicate entries based on city and api_call_timestamp
             
-            logging.info(f"Inserting {len(weather_data_list)} records...")
             inserted_count = 0
-            
             for data in weather_data_list:
                 metadata = data.get("_metadata", {})
                 city_name = metadata.get("city_name")
                 api_call_timestamp = metadata.get("api_call_timestamp")
                 ingestion_timestamp = metadata.get("ingestion_timestamp")
-                
-                # Convert dict to JSON string for JSONB
                 api_response_json = json.dumps(data)
                 
-                # Parameterized query to prevent SQL injection
-                # ON CONFLICT DO NOTHING ensures idempotency if we re-run the extraction 
-                # for the same timestamp (which XCom might pass if re-run downstream only)
                 insert_query = """
-                    INSERT INTO raw.weather_data 
-                    (city_name, api_response, api_call_timestamp, ingestion_timestamp)
-                    VALUES (%s, %s, %s, %s)
-                    ON CONFLICT (city_name, api_call_timestamp) DO NOTHING;
+                    INSERT INTO raw.weather_data (city_name, api_response, api_call_timestamp, ingestion_timestamp)
+                    VALUES (%s, %s, %s, %s) ON CONFLICT (city_name, api_call_timestamp) DO NOTHING;
                 """
-                
-                cur.execute(insert_query, (
-                    city_name, 
-                    api_response_json, 
-                    api_call_timestamp, 
-                    ingestion_timestamp
-                ))
-                
-                # Check if a row was actually inserted
+                cur.execute(insert_query, (city_name, api_response_json, api_call_timestamp, ingestion_timestamp))
                 if cur.rowcount > 0:
                     inserted_count += 1
-
-            conn.commit()
-            logging.info(f"Successfully inserted {inserted_count} new records.")
             
+            conn.commit()
+            logging.info(f"Successfully inserted {inserted_count} new records into raw.weather_data.")
     except Exception as e:
-        logging.error(f"Error loading data to PostgreSQL: {e}")
-        if conn:
-            conn.rollback()
+        logging.error(f"Error loading to PG: {e}")
+        if conn: conn.rollback()
         raise e
     finally:
-        if conn:
-            conn.close()
-            logging.info("PostgreSQL connection closed.")
+        if conn: conn.close()
 
 def extract_weather_from_api(**kwargs):
-    """
-    Extracts weather data from WeatherStack API for a list of cities.
-    
-    This function:
-    1. Retrieves the API key from the environment.
-    2. Iterates through a predefined list of cities.
-    3. Makes a GET request to the WeatherStack API for each city.
-    4. collecting the standardized JSON response and metadata.
-    5. Returns the list of weather data to be pushed to XCom.
-    
-    Args:
-        **kwargs: Airflow context arguments.
-        
-    Returns:
-        list: A list of dictionaries containing weather data and metadata for each city.
-    """
     api_key = os.getenv("WEATHERSTACK_API_KEY")
     if not api_key:
-        logging.error("WEATHERSTACK_API_KEY not found in environment variables.")
-        # We raise an error here to fail the task if the configuration is missing
-        raise ValueError("WEATHERSTACK_API_KEY not found.")
-
+        logging.error("WEATHERSTACK_API_KEY is missing!")
+        return []
+        
     cities = ["London", "New York", "Tokyo", "Mumbai", "Sydney"]
     weather_data_list = []
-    
     base_url = "http://api.weatherstack.com/current"
     
     for city in cities:
         try:
-            logging.info(f"Fetching weather data for {city}...")
-            params = {
-                "access_key": api_key,
-                "query": city
-            }
-            
-            # Use a timeout to ensure the task doesn't hang indefinitely
+            logging.info(f"Fetching data for {city}...")
+            params = {"access_key": api_key, "query": city}
             response = requests.get(base_url, params=params, timeout=10)
-            
-            # Check for HTTP errors (e.g., 401 Unauthorized, 404 Not Found)
             response.raise_for_status()
-            
             data = response.json()
             
-            # Check for API-specific errors (WeatherStack returns 200 even for some errors)
             if "error" in data:
-                logging.error(f"API Error for {city}: {data['error']['info']}")
+                logging.error(f"API Error for {city}: {data['error'].get('info', 'Unknown error')}")
                 continue
-
-            # Add metadata
-            # We add timestamps to track when the data was generated vs when we ingested it.
-            # This is crucial for debugging data freshness and lineage issues.
+                
             current_time = datetime.utcnow().isoformat()
             data["_metadata"] = {
-                "city_name": city,
-                "api_call_timestamp": current_time,
-                "ingestion_timestamp": current_time,
+                "city_name": city, 
+                "api_call_timestamp": current_time, 
+                "ingestion_timestamp": current_time, 
                 "status_code": response.status_code
             }
-            
             weather_data_list.append(data)
-            logging.info(f"Successfully fetched data for {city}.")
-            
-        except requests.exceptions.RequestException as e:
-            # We handle errors per city to prevent a single failure (e.g., one city's API call failing)
-            # from failing the entire task. This ensures we collect as much data as possible.
-            logging.error(f"Error fetching data for {city}: {e}")
-            continue
+            logging.info(f"Successfully collected data for {city}.")
         except Exception as e:
-            logging.error(f"Unexpected error for {city}: {e}")
+            logging.error(f"Exception for {city}: {e}")
             continue
-
-    # XCom (Cross-Communication) is used to pass messages or small amounts of data 
-    # between tasks. Here we return the list of data, which Airflow automatically 
-    # pushes to XCom with the key 'return_value'.
-    logging.info(f"Extracted data for {len(weather_data_list)} cities.")
+            
+    logging.info(f"Total records extracted: {len(weather_data_list)}")
     return weather_data_list
 
 def task_failure_callback(context):
-    """
-    Callback function that runs when a task fails.
-    """
-    task_instance = context.get('task_instance')
-    task_id = task_instance.task_id
-    dag_id = task_instance.dag_id
-    execution_date = context.get('execution_date')
-    
-    logging.error(f"Task {task_id} failed in DAG {dag_id} for execution date {execution_date}.")
-    
-    # Email notification setup (commented out as requested)
-    # from airflow.utils.email import send_email
-    # subject = f"Airflow Task Failed: {task_id}"
-    # html_content = f"Task {task_id} in DAG {dag_id} failed."
-    # send_email(to=['alerts@example.com'], subject=subject, html_content=html_content)
+    logging.error("Task failed.")
 
 default_args = {
     'owner': 'airflow',
     'retries': 3,
     'retry_delay': timedelta(minutes=5),
-    'email_on_failure': False, # Set to True if email is configured
-    'on_failure_callback': task_failure_callback # Run this callback on task failure
+    'on_failure_callback': task_failure_callback
 }
 
 with DAG(
     dag_id="weather_etl_pipeline",
     default_args=default_args,
-    description="A simple ETL pipeline for weather data (WeatherStack)",
     schedule_interval="@hourly",
-    start_date=datetime.now() - timedelta(days=1),
+    start_date=datetime(2024, 1, 1),
     catchup=False,
-    tags=['weather', 'etl', 'production'],
+    tags=['weather'],
 ) as dag:
-
     extract_weather_data = PythonOperator(
-        task_id='extract_weather_data',
+        task_id='extract_weather_data', 
         python_callable=extract_weather_from_api,
         provide_context=True
     )
     
-    # We handle errors per city in the extract task to allow partial success,
-    # but if the entire task fails (e.g. API key missing), the callback will trigger.
-
     load_to_postgres = PythonOperator(
-        task_id='load_to_postgres',
+        task_id='load_to_postgres', 
         python_callable=load_weather_to_raw_table,
         provide_context=True
     )
-
-    # dbt Tasks using BashOperator
-    # We use BashOperator because dbt is a CLI (Command Line Interface) tool 
-    # and this is the standard, most flexible way to run it in Airflow.
-    # It allows us to pass arguments directly to the dbt command.
     
-    # dbt seed: Loads CSV files (from dbt/seeds) into the database as tables.
-    # This is used for static reference data like our list of cities.
     dbt_seed = BashOperator(
-        task_id='dbt_seed',
-        bash_command='cd /opt/dbt && dbt seed --profiles-dir /opt/dbt',
-        dag=dag
+        task_id='dbt_seed', 
+        bash_command='cd /opt/dbt && dbt seed --profiles-dir /opt/dbt'
     )
-
-    # dbt run: Executes the SQL models (staging and marts) in the correct dependency order.
-    # It materializes views and tables in the database.
-    dbt_run = BashOperator(
-        task_id='dbt_run',
-        bash_command='cd /opt/dbt && dbt run --profiles-dir /opt/dbt',
-        dag=dag
-    )
-
-    # dbt test: Runs data quality tests defined in schema.yml (e.g., unique, not_null).
-    # If any test fails, this task will fail, stopping the pipeline and preventing bad data 
-    # from downstream usage. Ideally, this should alert the data team.
-    dbt_test = BashOperator(
-        task_id='dbt_test',
-        bash_command='cd /opt/dbt && dbt test --profiles-dir /opt/dbt',
-        dag=dag
-    )
-
-    # dbt docs generate: Generates documentation website for the models.
-    # Optional task, often run at the end.
-    dbt_docs_generate = BashOperator(
-        task_id='dbt_docs_generate',
-        bash_command='cd /opt/dbt && dbt docs generate --profiles-dir /opt/dbt',
-        dag=dag
-    )
-
-
-    # Task Dependencies:
-    # 1. Extract data from API
-    # 2. Load data to Postgres raw table
-    # 3. Run dbt seed (load static data)
-    # 4. Run dbt transformation models
-    # 5. Test data quality
-    # 6. Generate documentation (optional/non-blocking)
     
-    extract_weather_data >> load_to_postgres >> dbt_seed >> dbt_run >> dbt_test >> dbt_docs_generate
+    dbt_run = BashOperator(
+        task_id='dbt_run', 
+        bash_command='cd /opt/dbt && dbt run --profiles-dir /opt/dbt'
+    )
+    
+    dbt_test_task = BashOperator(
+        task_id='dbt_test', 
+        bash_command='cd /opt/dbt && dbt test --profiles-dir /opt/dbt'
+    )
+    
+    dq_checks_task = PythonOperator(
+        task_id='data_quality_checks', 
+        python_callable=data_quality_checks.run_all_checks,
+        provide_context=True
+    )
+    
+    dbt_docs_task = BashOperator(
+        task_id='dbt_docs_generate', 
+        bash_command='cd /opt/dbt && dbt docs generate --profiles-dir /opt/dbt'
+    )
+
+    extract_weather_data >> load_to_postgres >> dbt_seed >> dbt_run >> dbt_test_task >> dq_checks_task >> dbt_docs_task

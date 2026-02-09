@@ -62,6 +62,7 @@ This project implements a real-time weather data pipeline that:
 
 4. **Access Interfaces**
    - **Airflow UI:** [http://localhost:8080](http://localhost:8080) (Login: `airflow` / `airflow`)
+   - **Dashboard UI:** [http://localhost:8501](http://localhost:8501)
    - **Database:** `localhost:5432` (User: `airflow`, Pass: `airflow`, DB: `weather_db`)
 
 

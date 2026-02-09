@@ -1,0 +1,36 @@
+[0m13:27:51  Running with dbt=1.7.4
+[0m13:27:51  dbt version: 1.7.4
+[0m13:27:51  python version: 3.11.8
+[0m13:27:51  python path: /usr/local/bin/python
+[0m13:27:51  os info: Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.36
+[0m13:27:51  Using profiles dir at /opt/dbt
+[0m13:27:51  Using profiles.yml file at /opt/dbt/profiles.yml
+[0m13:27:51  Using dbt_project.yml file at /opt/dbt/dbt_project.yml
+[0m13:27:51  adapter type: postgres
+[0m13:27:51  adapter version: 1.7.4
+[0m13:27:52  Configuration:
+[0m13:27:52    profiles.yml file [[32mOK found and valid[0m]
+[0m13:27:52    dbt_project.yml file [[32mOK found and valid[0m]
+[0m13:27:52  Required dependencies:
+[0m13:27:52   - git [[32mOK found[0m]
+
+[0m13:27:52  Connection:
+[0m13:27:52    host: postgres
+[0m13:27:52    port: 5432
+[0m13:27:52    user: Airflow
+[0m13:27:52    database: weather_db
+[0m13:27:52    schema: staging
+[0m13:27:52    connect_timeout: 10
+[0m13:27:52    role: None
+[0m13:27:52    search_path: None
+[0m13:27:52    keepalives_idle: 0
+[0m13:27:52    sslmode: None
+[0m13:27:52    sslcert: None
+[0m13:27:52    sslkey: None
+[0m13:27:52    sslrootcert: None
+[0m13:27:52    application_name: dbt
+[0m13:27:52    retries: 1
+[0m13:27:52  Registered adapter: postgres=1.7.4
+[0m13:27:52    Connection test: [[32mOK connection ok[0m]
+
+[0m13:27:52  [32mAll checks passed![0m

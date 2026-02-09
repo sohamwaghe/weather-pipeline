@@ -13,7 +13,7 @@ time_dim as (
 
 select
     -- Surrogate key for the fact table
-    md5(w.id || w.api_call_timestamp) as weather_id,
+    md5(cast(w.id as varchar) || cast(w.api_call_timestamp as varchar)) as weather_id,
     
     -- Foreign Keys
     c.city_id,
