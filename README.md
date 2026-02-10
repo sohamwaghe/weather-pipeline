@@ -1,4 +1,3 @@
-# (readme written with AI)
 # 🌤️ Real-Time Weather Data Pipeline
 
 > Production-grade ELT pipeline demonstrating modern data engineering practices
@@ -10,6 +9,8 @@
 
 ### Live Dashboard
 ![Dashboard](docs/images/dashboard-screenshot.png)
+
+![Dashboard 2](docs/images/dashboard-screenshot2.png)
 
 ### Airflow Orchestration
 ![Airflow DAG](docs/images/airflow-dag-graph.png)
@@ -45,9 +46,6 @@
                  │  Dashboard  │  │  & Logs  │
                  └─────────────┘  └──────────┘
 ```
-
-## 🎥 Demo Video
-[Watch 2-minute demo](https://youtu.be/your-video-here)
 
 ## 🚀 Quick Start
 ```bash
