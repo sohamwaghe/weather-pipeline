@@ -1,0 +1,29 @@
+# Pre-commit configuration to ensure code quality before every commit.
+# Install with: pip install pre-commit && pre-commit install
+
+repos:
+  - repo: https://github.com/psf/black
+    rev: 23.12.1
+    hooks:
+      - id: black
+        description: "Standard Python formatter"
+
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.0.0
+    hooks:
+      - id: flake8
+        description: "Python linter for PEP8 and logic errors"
+
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        description: "Sort Python imports alphabetically and by section"
+
+  - repo: https://github.com/sqlfluff/sqlfluff
+    rev: 2.3.5
+    hooks:
+      - id: sqlfluff-lint
+        files: \.sql$
+        args: [--dialect, postgres]
+        description: "Lint SQL files in dbt models"

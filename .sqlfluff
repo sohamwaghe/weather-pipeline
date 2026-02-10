@@ -1,0 +1,20 @@
+[sqlfluff]
+dialect = postgres
+templater = jinja
+runaway_limit = 10
+max_line_length = 120
+
+[sqlfluff:templater:jinja]
+apply_dbt_builtins = True
+
+[sqlfluff:indentation]
+tab_width = 4
+
+[sqlfluff:layout:type:comma]
+spacing_before = touch
+
+[sqlfluff:rules:capitalisation.keywords]
+capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.identifiers]
+extended_capitalisation_policy = lower
