@@ -13,6 +13,7 @@
 ![Dashboard 2](docs/images/dashboard-screenshot2.png)
 
 ### Airflow Orchestration
+*(Note: Capture your own screenshot from the Airflow UI to replace this placeholder)*
 ![Airflow DAG](docs/images/airflow-dag-graph.png)
 
 ## 🏗️ Architecture
@@ -132,6 +133,19 @@ python test_pipeline.py
 - Intuitive for business users
 - Supports dimensional analysis (e.g., "average temp by city by month")
 - Industry standard (Kimball methodology)
+
+## 🏗️ Architecture
+The pipeline follows a modular ELT design orchestrated by Airflow. Below is the DAG graph showing the extraction, loading, and transformation flow:
+
+```mermaid
+graph LR
+    E[Extract Weather Data] --> L[Load to Raw.Weather_Data]
+    L --> S[dbt Seed]
+    S --> R[dbt Run]
+    R --> T[dbt Test]
+    T --> DQ[Data Quality Checks]
+    DQ --> D[dbt Docs Generate]
+```
 
 ## 🛠️ Technical Deep Dive
 

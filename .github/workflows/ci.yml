@@ -55,7 +55,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -r airflow/requirements.txt
+          pip install -r requirements.txt
           pip install pytest pytest-cov
 
       - name: Run pytest
@@ -91,7 +91,7 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: ./dashboard
-          file: ./dashboard/Dockerfile
+          file: ./dashboard/Dockerfile.streamlit
           push: false
           tags: weather-dashboard:${{ github.sha }}
 
@@ -169,13 +169,13 @@ jobs:
           echo "AIRFLOW_UID=50000" >> .env
 
       - name: Spin up stack
-        run: docker-compose up -d
+        run: docker compose up -d
 
       - name: Wait for health
         run: sleep 30 # Simple wait or use a healthcheck loop
 
-      - name: Run validation script (Placeholder)
-        run: echo "E2E Integration tests would run here"
+      - name: Run validation script
+        run: docker compose run --rm airflow-webserver python test_pipeline.py
 
       - name: Spin down stack
-        run: docker-compose down
+        run: docker compose down
